@@ -659,13 +659,13 @@
           systemType: "Direct liquid cooling (DLC)",
           airFraction: "20% air cooling · 80% liquid cooling",
           systemCapacity: "113 m³/s ventilation · 487 m³/s recirculation",
-          filterCount: "122 ventilation · 523 recirculation",
+          filterCount: "2,674 ventilation · 2,674 recirculation",
         },
         filters: {
-          "A": { name: "Filter A", pressureEnd: 217.83, pmMean: 0.17, pm10Mean: 0.08, energyRecirc:  977841, energyVent:  318411, energyKwh: 1296252, energyCost: 230785.95, dustHeld: 187.26 },
+          "A": { name: "Filter A", pressureEnd: 206, pmMean: 0.22, pm10Mean: 0.37, energyRecirc:  5066340, energyVent:  6773432, energyKwh: 11839772, energyCost: 2107479.40, dustHeld: 171 },
           // PM2.5 0.12 µg/m³ for DC-A Filter B — Feedback 4 §3.6
           // overrides the prior Feedback 3 §02.7 value of 0.25.
-          "B": { name: "Filter B", pressureEnd: 135.32, pmMean: 0.12, pm10Mean: 0.07, energyRecirc:  640345, energyVent:  204096, energyKwh:  844441, energyCost: 150310.68, dustHeld: 188.99 },
+          "B": { name: "Filter B", pressureEnd: 131, pmMean: 0.20, pm10Mean: 0.36, energyRecirc:  3313464, energyVent:  4382655, energyKwh:  7696119, energyCost: 1369909.20, dustHeld: 177 },
         },
       },
       B: {
@@ -679,21 +679,21 @@
           systemType: "Direct evaporative cooling (DEC)",
           airFraction: "50% air cooling · 50% liquid cooling",
           systemCapacity: "600 m³/s ventilation · 600 m³/s recirculation",
-          filterCount: "645 ventilation · 645 recirculation",
+          filterCount: "4,707 ventilation · 4,707 recirculation",
         },
         filters: {
-          "A": { name: "Filter A", pressureEnd: 219.86, pmMean: 0.60, pm10Mean: 0.25, energyRecirc: 1215364, energyVent: 1725270, energyKwh: 2940634, energyCost: 519499.50, dustHeld: 189.96 },
-          "B": { name: "Filter B", pressureEnd: 138.51, pmMean: 0.62, pm10Mean: 0.29, energyRecirc:  796344, energyVent: 1094498, energyKwh: 1890842, energyCost: 336569.71, dustHeld: 197.53 },
+          "A": { name: "Filter A", pressureEnd: 194, pmMean: 0.12, pm10Mean: 0.17, energyRecirc: 7696119, energyVent: 11532344, energyKwh: 19228463, energyCost: 3625704, dustHeld: 153 },
+          "B": { name: "Filter B", pressureEnd: 124, pmMean: 0.11, pm10Mean: 0.17, energyRecirc:  5786576, energyVent: 7462642, energyKwh: 13249218, energyCost: 2358361, dustHeld: 157 },
         },
       },
     };
 
     // Co-benefit dollar scaling per MWh — derived from statewide totals
     // (412 sites · $2.83M climate · $369k health · 206,419 MWh saved).
-    const COBENEFIT_PER_MWH = {
+/*     const COBENEFIT_PER_MWH = {
       climateDollars: (2.83e6 / 206419),  // ≈ $13.71 / MWh saved
-      healthDollars:  (3.69e5 / 206419),  // ≈ $1.79 / MWh saved
-    };
+      healthDollars: (3.69e5 / 206419),  // ≈ $1.79 / MWh saved
+    }; */
 
     // ---------- State ----------
     // Default to single-filter mode (Filter A) per Feedback 3 §02.6/02.7
