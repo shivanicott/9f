@@ -641,16 +641,21 @@
     function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
     // ---------- Case + filter spec ----------
-    // Feedback 3 reversal: Filter A = anonymized Camfil (higher pressure /
-    // lower PM / higher energy / higher TBO cost), Filter B = anonymized
-    // H&V (lower pressure / higher PM / lower energy / lower TBO cost).
-    // Pressure dots and PM averages match Feedback 3 §02.4/02.7 exactly.
-    // Energy splits (recirc + vent) match §02.8 verbatim. Cost values to
-    // the cent match §02.10. Vendor names never appear in UI.
+    // Filter A = higher pressure / lower PM / higher energy / higher TBO
+    // cost, Filter B = lower pressure / higher PM / lower energy / lower
+    // TBO cost. Pressure dots and PM averages match Feedback 3 §02.4/02.7
+    // exactly. Energy splits (recirc + vent) match §02.8 verbatim. Cost
+    // values to the cent match §02.10. Filter/vendor identity never
+    // appears in the UI.
     const CASES = {
       A: {
         label: "Data Center A",
         short: "Data Center A",
+        // Indoor PM2.5 chart y-axis cap (µg/m³) — see PM_DATA (pm-data.js).
+        // A couple of dust-loading spikes each year run well past this;
+        // the chart lets them run off the top of the frame rather than
+        // rescale to the outlier.
+        pmAxisCap: 1.0,
         site: {
           descriptor: "Modeled Virginia data center · DLC archetype",
           totalVolume_m3: 743224,
@@ -671,6 +676,7 @@
       B: {
         label: "Data Center B",
         short: "Data Center B",
+        pmAxisCap: 0.7,
         site: {
           descriptor: "Modeled Virginia data center · DEC archetype",
           totalVolume_m3: 408773,
@@ -687,6 +693,15 @@
         },
       },
     };
+
+    // Real measured indoor PM2.5, one operating year per building/filter,
+    // bucketed for plotting — see pm-data.js (window.PM_DATA).
+    const PM_DATA = window.PM_DATA || {};
+    function pmAnnualMean(caseKey, filterKey) {
+      const buckets = (PM_DATA[caseKey] || {})[filterKey] || [];
+      if (!buckets.length) return 0;
+      return buckets.reduce((sum, b) => sum + b.mean, 0) / buckets.length;
+    }
 
     // Co-benefit dollar scaling per MWh — derived from statewide totals
     // (412 sites · $2.83M climate · $369k health · 206,419 MWh saved).
@@ -736,32 +751,15 @@
       }
       return out;
     }
-    function pmSeries(filter, seed) {
-      const r = rng(seed);
-      const N = 240;
-      const out = [];
-      for (let i = 0; i <= N; i++) {
-        const t = i / N;
-        const seasonal = Math.sin(t * Math.PI * 2 - Math.PI / 3) * 0.025;
-        const noise = (r() - 0.5) * 0.045;
-        // Conventional time-series orientation:
-        // x = hours into the year (0..8760), y = PM level (μg/m³).
-        const pm = Math.max(0, filter.pmMean + seasonal + noise);
-        out.push({ x: t * 8760, y: pm });
-      }
-      return out;
-    }
 
     // ---------- Chart drawing ----------
     // PAD.l widened from 42 → 56 to make room for the vertical-left
     // y-axis title (Feedback 4 §3.5).
     const PAD = { l: 56, r: 14, t: 14, b: 30 };
-    // Generalized x/y scales over real (xMin..xMax) × (yMin..yMax) domains.
-    // The PM chart inverts data orientation per Feedback 3 §02.7:
-    // x = PM2.5 level (μg/m³), y = Time (hrs). The series builder above
-    // already labels coords {x, y} so the same plotter works for both
-    // pressure (x=g, y=Pa) and PM (x=μg/m³, y=hrs).
-    function lineChart(svg, opts) {
+    // Shared axis rig: sizes the SVG to its container, draws gridlines,
+    // tick labels and axis titles over a (xMin..xMax) × (yMin..yMax)
+    // domain, and returns the scales so callers plot their own marks.
+    function drawChartAxes(svg, opts) {
       clear(svg);
       const rect = svg.getBoundingClientRect();
       const W = Math.max(360, Math.round(rect.width));
@@ -817,6 +815,16 @@
         t.textContent = opts.yLabel;
         svg.appendChild(t);
       }
+      return { W, H, iw, ih, xS, yS };
+    }
+
+    // Generalized x/y scales over real (xMin..xMax) × (yMin..yMax) domains.
+    // The PM chart inverts data orientation per Feedback 3 §02.7:
+    // x = PM2.5 level (μg/m³), y = Time (hrs). The series builder above
+    // already labels coords {x, y} so the same plotter works for both
+    // pressure (x=g, y=Pa) and PM (x=μg/m³, y=hrs).
+    function lineChart(svg, opts) {
+      const { xS, yS } = drawChartAxes(svg, opts);
       // Plot each series
       opts.series.forEach((s) => {
         const path = s.pts.map((p, i) => (i ? "L" : "M") + xS(p.x).toFixed(1) + "," + yS(p.y).toFixed(1)).join(" ");
@@ -835,6 +843,25 @@
             svg.appendChild(tx);
           }
         }
+      });
+    }
+
+    // Indoor PM2.5 chart — mean line + min/max band per bucket, plotted
+    // against a capped y-axis (opts.yMax). A bucket whose real value runs
+    // past the cap isn't rescaled or flagged with a marker: its line/band
+    // simply continues past the cap and is clipped by the SVG frame
+    // (.fs__chart svg has overflow:hidden), so it just reads as running
+    // off-scale.
+    function pmBandChart(svg, opts) {
+      const { xS, yS } = drawChartAxes(svg, opts);
+      opts.series.forEach((s) => {
+        const n = s.buckets.length;
+        const bx = (i) => opts.xMin + (i / (n - 1)) * (opts.xMax - opts.xMin);
+        const top = s.buckets.map((b, i) => xS(bx(i)).toFixed(1) + "," + yS(b.max).toFixed(1));
+        const bottom = s.buckets.slice().reverse().map((b, i) => xS(bx(n - 1 - i)).toFixed(1) + "," + yS(b.min).toFixed(1));
+        svg.appendChild(el("path", { d: "M" + top.join(" L") + " L" + bottom.join(" L") + " Z", fill: s.color, opacity: 0.14, stroke: "none" }));
+        const lineD = s.buckets.map((b, i) => (i ? "L" : "M") + xS(bx(i)).toFixed(1) + "," + yS(b.mean).toFixed(1)).join(" ");
+        svg.appendChild(el("path", { d: lineD, fill: "none", stroke: s.color, "stroke-width": 1.3, "stroke-linecap": "round", "stroke-linejoin": "round", opacity: 0.95 }));
       });
     }
 
@@ -1242,16 +1269,18 @@
       const aSpan = (txt) => `<span class="fs__readout-a">${txt}</span>`;
       const bSpan = (txt) => `<span class="fs__readout-b">${txt}</span>`;
 
+      const pmA = pmAnnualMean(state.case, "A"), pmB = pmAnnualMean(state.case, "B");
+
       if (state.filter === "compare") {
         setHTML("fs-pressure-readout", `<span class="fs__readout-row">${aSpan("A <b>" + FA.pressureEnd.toFixed(0) + "</b>")} · ${bSpan("B <b>" + FB.pressureEnd.toFixed(0) + "</b>")} Pa</span>`);
-        setHTML("fs-pm-readout",       `<span class="fs__readout-row">${aSpan("A <b>" + FA.pmMean.toFixed(2) + "</b>")} · ${bSpan("B <b>" + FB.pmMean.toFixed(2) + "</b>")} µg/m³</span>`);
+        setHTML("fs-pm-readout",       `<span class="fs__readout-row">${aSpan("A <b>" + pmA.toFixed(2) + "</b>")} · ${bSpan("B <b>" + pmB.toFixed(2) + "</b>")} µg/m³</span>`);
         setHTML("fs-energy-readout",   `<span class="fs__readout-row">${aSpan("A <b>" + (FA.energyKwh/1000).toFixed(0) + "</b>")} · ${bSpan("B <b>" + (FB.energyKwh/1000).toFixed(0) + "</b>")} MWh/y</span>`);
       } else {
         const isA = state.filter === "A";
         const f  = isA ? FA : FB;
         const wrap = isA ? aSpan : bSpan;
         setHTML("fs-pressure-readout", wrap(`<b>${f.pressureEnd.toFixed(0)}</b> Pa`));
-        setHTML("fs-pm-readout",       wrap(`<b>${f.pmMean.toFixed(2)}</b> µg/m³`));
+        setHTML("fs-pm-readout",       wrap(`<b>${(isA ? pmA : pmB).toFixed(2)}</b> µg/m³`));
         setHTML("fs-energy-readout",   wrap(`<b>${f.energyKwh.toLocaleString()}</b> kWh/y`));
       }
     }
@@ -1288,19 +1317,17 @@
         yLabel: "Pressure drop (Pa)",
       });
 
-      // PM2.5 chart — conventional time-series orientation:
-      // x = Time (hrs), y = PM2.5 level (μg/m³).
+      // PM2.5 chart — real measured indoor PM2.5, one operating year per
+      // filter, as a mean line + min/max band. x = Time (hrs), y = PM2.5
+      // level (μg/m³), capped at caseData.pmAxisCap (see PM_DATA above).
       const pmSets = filters.map((fKey) => ({
-        pts: pmSeries(caseData.filters[fKey], fKey === "A" ? 91 : 113),
+        buckets: (PM_DATA[state.case] || {})[fKey] || [],
         color: FILTER_COLORS[fKey],
-        width: 1.0, opacity: 0.78,
       }));
-      const pmVals = pmSets.flatMap((s) => s.pts.map((p) => p.y));
-      const pmYMax = Math.max(...pmVals) * 1.12;
-      lineChart(pm, {
+      pmBandChart(pm, {
         series: pmSets,
         xMin: 0, xMax: 8760,
-        yMin: 0, yMax: pmYMax,
+        yMin: 0, yMax: caseData.pmAxisCap,
         xTicks: 4, yTicks: 4,
         fmtX: (v) => v >= 1000 ? (v / 1000).toFixed(1) + "K" : Math.round(v),
         fmtY: (v) => v.toFixed(2),

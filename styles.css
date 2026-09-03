@@ -1062,7 +1062,7 @@ sub, sup { font-size: 0.7em; }
 .fs__readout-row { display: inline-flex; align-items: baseline; gap: 4px; }
 .fs__readout-a, .fs__readout-a b { color: #4FA1FF; }
 .fs__readout-b, .fs__readout-b b { color: #9DD05A; }
-.fs__chart svg { width: 100%; height: 150px; display: block; }
+.fs__chart svg { width: 100%; height: 150px; display: block; overflow: hidden; }
 /* Energy chart needs extra vertical room below the x-axis for lane
    labels + "Filter A / Filter B" group labels + "Filter" x-axis title
    (Feedback 4 overlap fix). */
