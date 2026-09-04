@@ -317,12 +317,12 @@
             <span class="fs__cost-foot muted">Modeled annual cost difference at the case-study site.</span>
           </div>
           <div class="fs__cost-pair">
-            <div class="fs__cost-side fs__cost-side--a" data-fs-cost-filter="A">
+            <div class="fs__cost-side fs__cost-side--a" data-fs-cost-filter="A" role="button" tabindex="0" aria-pressed="true" aria-label="Toggle Filter A in the comparison">
               <span class="fs__cost-tag">Filter A</span>
               <span class="fs__cost-val" id="fs-cost-a">$230,785.95</span>
             </div>
             <span class="fs__cost-vs" aria-hidden="true">vs</span>
-            <div class="fs__cost-side fs__cost-side--b" data-fs-cost-filter="B">
+            <div class="fs__cost-side fs__cost-side--b" data-fs-cost-filter="B" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle Filter B in the comparison">
               <span class="fs__cost-tag">Filter B</span>
               <span class="fs__cost-val" id="fs-cost-b">$150,310.68</span>
             </div>
@@ -331,6 +331,10 @@
 
         <div class="fs__visual fs__visual--figure-left">
           <div class="fs__archetype">
+            <div class="fs__chipset fs__chipset--arch" role="group" aria-label="Case study">
+              <button class="chip chip--xs is-active" data-fs-case="A" type="button" aria-pressed="true">Data Center A</button>
+              <button class="chip chip--xs" data-fs-case="B" type="button" aria-pressed="false">Data Center B</button>
+            </div>
             <svg id="fs-arch" viewBox="0 0 360 280" preserveAspectRatio="xMidYMid meet"></svg>
             <div class="fs__arch-legend">
               <span><span class="dot dot--outdoor"></span> Outdoor PM<sub>2.5</sub> intake</span>
@@ -688,6 +692,7 @@
   <script src="data.js" defer></script>
   <script src="matrix-data.js" defer></script>
   <script src="pm-data.js" defer></script>
+  <script src="iso-tower.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

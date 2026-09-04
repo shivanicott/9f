@@ -1204,6 +1204,10 @@ sub, sup { font-size: 0.7em; }
   min-height: 320px;
 }
 #fs-arch { width: 100%; flex: 1; min-height: 240px; }
+.fs__chipset--arch {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
 .fs__arch-legend {
   position: absolute; left: 14px; bottom: 12px; right: 14px;
   display: flex; gap: 18px; flex-wrap: wrap;
@@ -1247,8 +1251,14 @@ sub, sup { font-size: 0.7em; }
   border-radius: 8px;
   border: 1.5px solid;
   background: rgba(6,12,22,0.5);
+  cursor: pointer;
   transition: opacity 200ms var(--ease), background 200ms var(--ease),
               box-shadow 200ms var(--ease);
+}
+.fs__cost-side:hover { box-shadow: 0 0 0 1px rgba(255,255,255,0.14); }
+.fs__cost-side:focus-visible {
+  outline: 2px solid var(--brand-sky, #4FA1FF);
+  outline-offset: 2px;
 }
 .fs__cost-side--a { border-color: #0A74D6; }
 .fs__cost-side--b { border-color: #7CB342; }

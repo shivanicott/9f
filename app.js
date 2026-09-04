@@ -1211,10 +1211,12 @@
       if (aSide) {
         aSide.classList.toggle("is-active", sel === "A");
         aSide.classList.toggle("is-dim", sel === "B");
+        aSide.setAttribute("aria-pressed", sel === "B" ? "false" : "true");
       }
       if (bSide) {
         bSide.classList.toggle("is-active", sel === "B");
         bSide.classList.toggle("is-dim", sel === "A");
+        bSide.setAttribute("aria-pressed", sel === "A" ? "false" : "true");
       }
     }
 
@@ -1344,12 +1346,13 @@
     // ---------- Controls ----------
     $$('[data-fs-case]').forEach((btn) => {
       btn.addEventListener("click", () => {
+        const key = btn.dataset.fsCase;
         $$('[data-fs-case]').forEach((b) => {
-          const on = b === btn;
+          const on = b.dataset.fsCase === key;
           b.classList.toggle("is-active", on);
           b.setAttribute("aria-pressed", on ? "true" : "false");
         });
-        state.case = btn.dataset.fsCase;
+        state.case = key;
         renderCaseHeader();
         renderCostReadout();
         buildArchetype();
@@ -1357,25 +1360,55 @@
         redraw();
       });
     });
+    // Applies a new state.filter value ("A" | "B" | "compare"), syncing
+    // the top chip control and every dependent view. Shared by the top
+    // Filter/Compare chips and by the clickable Total Co-Benefits cost
+    // boxes below, so both controls stay in lockstep.
+    function applyFilter(next) {
+      state.filter = next;
+      $$('[data-fs-filter]').forEach((b) => {
+        const on = b.dataset.fsFilter === next;
+        b.classList.toggle("is-active", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      // Update filter-membrane label
+      const label = arch.querySelector("#fs-filter-label");
+      if (label) {
+        const filters = activeFilters();
+        label.textContent = filters.length === 1
+          ? CASES[state.case].filters[filters[0]].name.toUpperCase()
+          : "FILTER";
+      }
+      renderCostReadout();
+      updateIntent();
+      redraw();
+    }
+
     $$('[data-fs-filter]').forEach((btn) => {
-      btn.addEventListener("click", () => {
-        $$('[data-fs-filter]').forEach((b) => {
-          const on = b === btn;
-          b.classList.toggle("is-active", on);
-          b.setAttribute("aria-pressed", on ? "true" : "false");
-        });
-        state.filter = btn.dataset.fsFilter;
-        // Update filter-membrane label
-        const label = arch.querySelector("#fs-filter-label");
-        if (label) {
-          const filters = activeFilters();
-          label.textContent = filters.length === 1
-            ? CASES[state.case].filters[filters[0]].name.toUpperCase()
-            : "FILTER";
+      btn.addEventListener("click", () => applyFilter(btn.dataset.fsFilter));
+    });
+
+    // Total Co-Benefits cost boxes double as A/B toggles: clicking one
+    // adds/removes that filter from the comparison (compare = both on),
+    // but at least one side must stay active.
+    $$('[data-fs-cost-filter]').forEach((box) => {
+      const key = box.dataset.fsCostFilter; // "A" | "B"
+      const otherKey = key === "A" ? "B" : "A";
+      const toggle = () => {
+        const isOn = state.filter === "compare" || state.filter === key;
+        if (isOn) {
+          if (state.filter === "compare") applyFilter(otherKey);
+          // else: this is the only active side — ignore, keep ≥1 active.
+        } else {
+          applyFilter("compare");
         }
-        renderCostReadout();
-        updateIntent();
-        redraw();
+      };
+      box.addEventListener("click", toggle);
+      box.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggle();
+        }
       });
     });
 
@@ -1487,73 +1520,16 @@
       { letter: "L", label: "Limit",            color: "#E47A6A" },
     ];
 
-    const NS_SVG = "http://www.w3.org/2000/svg";
-    const svgEl = (tag, attrs) => {
-      const el = document.createElementNS(NS_SVG, tag);
-      if (attrs) Object.entries(attrs).forEach(([k,v]) => el.setAttribute(k, v));
-      return el;
-    };
-    const clearNode = (n) => { while (n.firstChild) n.removeChild(n.firstChild); };
-
-    // ---------- Tower SVG (live: each segment is a 0-100% bar) ----------
-    // Each segment is a horizontal bar that fills left→right in
-    // proportion to the bin's percentage. Redraws on every scenario
-    // change so the tower reflects the active state.
-    function drawPpTower(bins) {
+    // ---------- Isometric tower ----------
+    function drawPpTowerIso(bins) {
       if (!ppTower) return;
-      clearNode(ppTower);
-      const W = 110, H = 320;
-      ppTower.setAttribute("viewBox", `0 0 ${W} ${H}`);
-      const xL = 16, xR = 88;
-      const skew = 9;
-      const segH = 56;
-      const startY = 14;
-      const interior = xR - xL;
-
-      PP_BINS.forEach((bin, i) => {
-        const y = startY + i * segH;
-        const pct = Math.max(0, Math.min(100, bins[i] || 0));
-        const fillW = (pct / 100) * interior;
-        const bodyY = y + skew;
-        const bodyH = segH - skew - 2;
-
-        // Dark base for the empty portion of the bar
-        ppTower.appendChild(svgEl("rect", {
-          x: xL, y: bodyY, width: interior, height: bodyH,
-          fill: "rgba(178,204,238,0.04)",
-        }));
-        // Bin-colored fill (proportional, left-anchored)
-        if (fillW > 0.5) {
-          ppTower.appendChild(svgEl("rect", {
-            x: xL, y: bodyY, width: fillW, height: bodyH,
-            fill: bin.color, opacity: 0.92,
-          }));
-        }
-        // Body outline
-        ppTower.appendChild(svgEl("rect", {
-          x: xL, y: bodyY, width: interior, height: bodyH,
-          fill: "none", stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-        // Iso roof slab
-        ppTower.appendChild(svgEl("polygon", {
-          points: `${xL},${bodyY} ${xR},${bodyY} ${xR + skew},${y} ${xL - skew},${y}`,
-          fill: "rgba(178,204,238,0.05)",
-          stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-        // Iso right side
-        ppTower.appendChild(svgEl("polygon", {
-          points: `${xR},${bodyY} ${xR + skew},${y} ${xR + skew},${y + segH - 2 - skew} ${xR},${y + segH - 2}`,
-          fill: "rgba(0,0,0,0.22)",
-          stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-      });
-      // Base platform
-      const baseY = startY + PP_BINS.length * segH;
-      ppTower.appendChild(svgEl("polygon", {
-        points: `${xL-5},${baseY+skew} ${xR+5},${baseY+skew} ${xR + skew + 5},${baseY} ${xL - skew - 5},${baseY}`,
-        fill: "rgba(178,204,238,0.05)",
-        stroke: "rgba(178,204,238,0.4)", "stroke-width": 1,
+      const data = PP_BINS.map((bin, i) => ({
+        k: bin.label,
+        letter: bin.letter,
+        color: bin.color,
+        value: Math.max(0, Math.min(100, bins[i] || 0)),
       }));
+      renderIsometricStack("#mxp-pp-tower", data);
     }
 
     // ---------- Bin rows render ----------
@@ -1631,7 +1607,7 @@
       if (!dataset) return; // safety: button should be disabled
       const s = dataset[idx] || dataset[0];
       if (ppScenarioLbl) ppScenarioLbl.textContent = formatScenarioLabel(s.l);
-      drawPpTower(s.b);
+      drawPpTowerIso(s.b);
       renderPpBins(s);
     }
 
@@ -2313,7 +2289,6 @@
     function rngS(seed) { let s = seed; return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
 
     // ---------- DOM refs ----------
-    const tower = document.getElementById("hlx-tower");
     const binsList = document.getElementById("hlx-bins");
     const cards = document.getElementById("hlx-cards");
     const stSvg = document.getElementById("hlx-st");
@@ -2321,67 +2296,6 @@
     const stTitle = document.getElementById("hlx-st-title");
     const tsTitle = document.getElementById("hlx-ts-title");
     const pills = root.querySelectorAll(".hlx__pills--param .hlx__pill");
-
-    // ---------- Tower (5 isometric stacked segments) ----------
-    // Each segment is now a 0-100% horizontal bar — the bin color fills
-    // from the left wall toward the right in proportion to the bin's
-    // current percentage. Re-renders on every parameter switch so the
-    // tower visibly responds to the active state.
-    function drawTower(bins) {
-      clear(tower);
-      const W = 120, H = 280;
-      tower.setAttribute("viewBox", `0 0 ${W} ${H}`);
-      const segH = 44;
-      const startY = 10;
-      const xLeft = 22, xRight = 90;
-      const skewY = 8;
-      const interior = xRight - xLeft;
-
-      BINS.forEach((bin, i) => {
-        const y = startY + i * segH;
-        const pct = Math.max(0, Math.min(100, bins[i] || 0));
-        const fillW = (pct / 100) * interior;
-        const bodyY = y + skewY;
-        const bodyH = segH - skewY - 2;
-
-        // Body background (dark base for the empty portion)
-        tower.appendChild(E("rect", {
-          x: xLeft, y: bodyY, width: interior, height: bodyH,
-          fill: "rgba(178,204,238,0.04)",
-        }));
-        // Bin-colored fill bar (left-anchored, proportional)
-        if (fillW > 0.5) {
-          tower.appendChild(E("rect", {
-            x: xLeft, y: bodyY, width: fillW, height: bodyH,
-            fill: bin.color, opacity: 0.92,
-          }));
-        }
-        // Body outline
-        tower.appendChild(E("rect", {
-          x: xLeft, y: bodyY, width: interior, height: bodyH,
-          fill: "none", stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-        // Iso roof slab
-        tower.appendChild(E("polygon", {
-          points: `${xLeft},${bodyY} ${xRight},${bodyY} ${xRight + skewY},${y} ${xLeft - skewY},${y}`,
-          fill: "rgba(178,204,238,0.05)",
-          stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-        // Iso right side
-        tower.appendChild(E("polygon", {
-          points: `${xRight},${bodyY} ${xRight + skewY},${y} ${xRight + skewY},${y + segH - 2 - skewY} ${xRight},${y + segH - 2}`,
-          fill: "rgba(0,0,0,0.22)",
-          stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-      });
-      // Base platform
-      const baseY = startY + 5 * segH;
-      tower.appendChild(E("polygon", {
-        points: `${xLeft-5},${baseY+skewY} ${xRight+5},${baseY+skewY} ${xRight + skewY + 5},${baseY} ${xLeft - skewY - 5},${baseY}`,
-        fill: "rgba(178,204,238,0.05)",
-        stroke: "rgba(178,204,238,0.4)", "stroke-width": 1,
-      }));
-    }
 
     // ---------- Bin rows ----------
     function renderBins(pcts) {
@@ -2567,11 +2481,23 @@
       });
     }
 
+    // ---------- Isometric tower ----------
+    function drawTowerIso(bins) {
+      const data = BINS.map((bin, i) => ({
+        k: bin.k,
+        letter: bin.letter,
+        color: bin.color,
+        text: bin.text,
+        value: Math.max(0, Math.min(100, bins[i] || 0)),
+      }));
+      renderIsometricStack("#hlx-tower", data);
+    }
+
     // ---------- Apply parameter ----------
     function apply(key) {
       const p = PARAMS[key];
       if (!p) return;
-      drawTower(p.bins);
+      drawTowerIso(p.bins);
       renderBins(p.bins);
       renderCards(p.card);
       stTitle.innerHTML = `H.E.A.A.L. ${p.label} &middot; SpaceTime Map`;
