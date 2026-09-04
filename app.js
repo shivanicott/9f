@@ -641,16 +641,21 @@
     function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
     // ---------- Case + filter spec ----------
-    // Feedback 3 reversal: Filter A = anonymized Camfil (higher pressure /
-    // lower PM / higher energy / higher TBO cost), Filter B = anonymized
-    // H&V (lower pressure / higher PM / lower energy / lower TBO cost).
-    // Pressure dots and PM averages match Feedback 3 §02.4/02.7 exactly.
-    // Energy splits (recirc + vent) match §02.8 verbatim. Cost values to
-    // the cent match §02.10. Vendor names never appear in UI.
+    // Filter A = higher pressure / lower PM / higher energy / higher TBO
+    // cost, Filter B = lower pressure / higher PM / lower energy / lower
+    // TBO cost. Pressure dots and PM averages match Feedback 3 §02.4/02.7
+    // exactly. Energy splits (recirc + vent) match §02.8 verbatim. Cost
+    // values to the cent match §02.10. Filter/vendor identity never
+    // appears in the UI.
     const CASES = {
       A: {
         label: "Data Center A",
         short: "Data Center A",
+        // Indoor PM2.5 chart y-axis cap (µg/m³) — see PM_DATA (pm-data.js).
+        // A couple of dust-loading spikes each year run well past this;
+        // the chart lets them run off the top of the frame rather than
+        // rescale to the outlier.
+        pmAxisCap: 1.0,
         site: {
           descriptor: "Modeled Virginia data center · DLC archetype",
           totalVolume_m3: 743224,
@@ -659,18 +664,19 @@
           systemType: "Direct liquid cooling (DLC)",
           airFraction: "20% air cooling · 80% liquid cooling",
           systemCapacity: "113 m³/s ventilation · 487 m³/s recirculation",
-          filterCount: "122 ventilation · 523 recirculation",
+          filterCount: "2,674 ventilation · 2,674 recirculation",
         },
         filters: {
-          "A": { name: "Filter A", pressureEnd: 217.83, pmMean: 0.17, pm10Mean: 0.08, energyRecirc:  977841, energyVent:  318411, energyKwh: 1296252, energyCost: 230785.95, dustHeld: 187.26 },
+          "A": { name: "Filter A", pressureEnd: 206, pmMean: 0.22, pm10Mean: 0.37, energyRecirc:  5066340, energyVent:  6773432, energyKwh: 11839772, energyCost: 2107479.40, dustHeld: 171 },
           // PM2.5 0.12 µg/m³ for DC-A Filter B — Feedback 4 §3.6
           // overrides the prior Feedback 3 §02.7 value of 0.25.
-          "B": { name: "Filter B", pressureEnd: 135.32, pmMean: 0.12, pm10Mean: 0.07, energyRecirc:  640345, energyVent:  204096, energyKwh:  844441, energyCost: 150310.68, dustHeld: 188.99 },
+          "B": { name: "Filter B", pressureEnd: 131, pmMean: 0.20, pm10Mean: 0.36, energyRecirc:  3313464, energyVent:  4382655, energyKwh:  7696119, energyCost: 1369909.20, dustHeld: 177 },
         },
       },
       B: {
         label: "Data Center B",
         short: "Data Center B",
+        pmAxisCap: 0.7,
         site: {
           descriptor: "Modeled Virginia data center · DEC archetype",
           totalVolume_m3: 408773,
@@ -679,21 +685,30 @@
           systemType: "Direct evaporative cooling (DEC)",
           airFraction: "50% air cooling · 50% liquid cooling",
           systemCapacity: "600 m³/s ventilation · 600 m³/s recirculation",
-          filterCount: "645 ventilation · 645 recirculation",
+          filterCount: "4,707 ventilation · 4,707 recirculation",
         },
         filters: {
-          "A": { name: "Filter A", pressureEnd: 219.86, pmMean: 0.60, pm10Mean: 0.25, energyRecirc: 1215364, energyVent: 1725270, energyKwh: 2940634, energyCost: 519499.50, dustHeld: 189.96 },
-          "B": { name: "Filter B", pressureEnd: 138.51, pmMean: 0.62, pm10Mean: 0.29, energyRecirc:  796344, energyVent: 1094498, energyKwh: 1890842, energyCost: 336569.71, dustHeld: 197.53 },
+          "A": { name: "Filter A", pressureEnd: 194, pmMean: 0.12, pm10Mean: 0.17, energyRecirc: 7696119, energyVent: 11532344, energyKwh: 19228463, energyCost: 3625704, dustHeld: 153 },
+          "B": { name: "Filter B", pressureEnd: 124, pmMean: 0.11, pm10Mean: 0.17, energyRecirc:  5786576, energyVent: 7462642, energyKwh: 13249218, energyCost: 2358361, dustHeld: 157 },
         },
       },
     };
 
+    // Real measured indoor PM2.5, one operating year per building/filter,
+    // bucketed for plotting — see pm-data.js (window.PM_DATA).
+    const PM_DATA = window.PM_DATA || {};
+    function pmAnnualMean(caseKey, filterKey) {
+      const buckets = (PM_DATA[caseKey] || {})[filterKey] || [];
+      if (!buckets.length) return 0;
+      return buckets.reduce((sum, b) => sum + b.mean, 0) / buckets.length;
+    }
+
     // Co-benefit dollar scaling per MWh — derived from statewide totals
     // (412 sites · $2.83M climate · $369k health · 206,419 MWh saved).
-    const COBENEFIT_PER_MWH = {
+/*     const COBENEFIT_PER_MWH = {
       climateDollars: (2.83e6 / 206419),  // ≈ $13.71 / MWh saved
-      healthDollars:  (3.69e5 / 206419),  // ≈ $1.79 / MWh saved
-    };
+      healthDollars: (3.69e5 / 206419),  // ≈ $1.79 / MWh saved
+    }; */
 
     // ---------- State ----------
     // Default to single-filter mode (Filter A) per Feedback 3 §02.6/02.7
@@ -736,32 +751,15 @@
       }
       return out;
     }
-    function pmSeries(filter, seed) {
-      const r = rng(seed);
-      const N = 240;
-      const out = [];
-      for (let i = 0; i <= N; i++) {
-        const t = i / N;
-        const seasonal = Math.sin(t * Math.PI * 2 - Math.PI / 3) * 0.025;
-        const noise = (r() - 0.5) * 0.045;
-        // Conventional time-series orientation:
-        // x = hours into the year (0..8760), y = PM level (μg/m³).
-        const pm = Math.max(0, filter.pmMean + seasonal + noise);
-        out.push({ x: t * 8760, y: pm });
-      }
-      return out;
-    }
 
     // ---------- Chart drawing ----------
     // PAD.l widened from 42 → 56 to make room for the vertical-left
     // y-axis title (Feedback 4 §3.5).
     const PAD = { l: 56, r: 14, t: 14, b: 30 };
-    // Generalized x/y scales over real (xMin..xMax) × (yMin..yMax) domains.
-    // The PM chart inverts data orientation per Feedback 3 §02.7:
-    // x = PM2.5 level (μg/m³), y = Time (hrs). The series builder above
-    // already labels coords {x, y} so the same plotter works for both
-    // pressure (x=g, y=Pa) and PM (x=μg/m³, y=hrs).
-    function lineChart(svg, opts) {
+    // Shared axis rig: sizes the SVG to its container, draws gridlines,
+    // tick labels and axis titles over a (xMin..xMax) × (yMin..yMax)
+    // domain, and returns the scales so callers plot their own marks.
+    function drawChartAxes(svg, opts) {
       clear(svg);
       const rect = svg.getBoundingClientRect();
       const W = Math.max(360, Math.round(rect.width));
@@ -817,6 +815,16 @@
         t.textContent = opts.yLabel;
         svg.appendChild(t);
       }
+      return { W, H, iw, ih, xS, yS };
+    }
+
+    // Generalized x/y scales over real (xMin..xMax) × (yMin..yMax) domains.
+    // The PM chart inverts data orientation per Feedback 3 §02.7:
+    // x = PM2.5 level (μg/m³), y = Time (hrs). The series builder above
+    // already labels coords {x, y} so the same plotter works for both
+    // pressure (x=g, y=Pa) and PM (x=μg/m³, y=hrs).
+    function lineChart(svg, opts) {
+      const { xS, yS } = drawChartAxes(svg, opts);
       // Plot each series
       opts.series.forEach((s) => {
         const path = s.pts.map((p, i) => (i ? "L" : "M") + xS(p.x).toFixed(1) + "," + yS(p.y).toFixed(1)).join(" ");
@@ -835,6 +843,25 @@
             svg.appendChild(tx);
           }
         }
+      });
+    }
+
+    // Indoor PM2.5 chart — mean line + min/max band per bucket, plotted
+    // against a capped y-axis (opts.yMax). A bucket whose real value runs
+    // past the cap isn't rescaled or flagged with a marker: its line/band
+    // simply continues past the cap and is clipped by the SVG frame
+    // (.fs__chart svg has overflow:hidden), so it just reads as running
+    // off-scale.
+    function pmBandChart(svg, opts) {
+      const { xS, yS } = drawChartAxes(svg, opts);
+      opts.series.forEach((s) => {
+        const n = s.buckets.length;
+        const bx = (i) => opts.xMin + (i / (n - 1)) * (opts.xMax - opts.xMin);
+        const top = s.buckets.map((b, i) => xS(bx(i)).toFixed(1) + "," + yS(b.max).toFixed(1));
+        const bottom = s.buckets.slice().reverse().map((b, i) => xS(bx(n - 1 - i)).toFixed(1) + "," + yS(b.min).toFixed(1));
+        svg.appendChild(el("path", { d: "M" + top.join(" L") + " L" + bottom.join(" L") + " Z", fill: s.color, opacity: 0.14, stroke: "none" }));
+        const lineD = s.buckets.map((b, i) => (i ? "L" : "M") + xS(bx(i)).toFixed(1) + "," + yS(b.mean).toFixed(1)).join(" ");
+        svg.appendChild(el("path", { d: lineD, fill: "none", stroke: s.color, "stroke-width": 1.3, "stroke-linecap": "round", "stroke-linejoin": "round", opacity: 0.95 }));
       });
     }
 
@@ -1184,10 +1211,12 @@
       if (aSide) {
         aSide.classList.toggle("is-active", sel === "A");
         aSide.classList.toggle("is-dim", sel === "B");
+        aSide.setAttribute("aria-pressed", sel === "B" ? "false" : "true");
       }
       if (bSide) {
         bSide.classList.toggle("is-active", sel === "B");
         bSide.classList.toggle("is-dim", sel === "A");
+        bSide.setAttribute("aria-pressed", sel === "A" ? "false" : "true");
       }
     }
 
@@ -1242,16 +1271,18 @@
       const aSpan = (txt) => `<span class="fs__readout-a">${txt}</span>`;
       const bSpan = (txt) => `<span class="fs__readout-b">${txt}</span>`;
 
+      const pmA = pmAnnualMean(state.case, "A"), pmB = pmAnnualMean(state.case, "B");
+
       if (state.filter === "compare") {
         setHTML("fs-pressure-readout", `<span class="fs__readout-row">${aSpan("A <b>" + FA.pressureEnd.toFixed(0) + "</b>")} · ${bSpan("B <b>" + FB.pressureEnd.toFixed(0) + "</b>")} Pa</span>`);
-        setHTML("fs-pm-readout",       `<span class="fs__readout-row">${aSpan("A <b>" + FA.pmMean.toFixed(2) + "</b>")} · ${bSpan("B <b>" + FB.pmMean.toFixed(2) + "</b>")} µg/m³</span>`);
+        setHTML("fs-pm-readout",       `<span class="fs__readout-row">${aSpan("A <b>" + pmA.toFixed(2) + "</b>")} · ${bSpan("B <b>" + pmB.toFixed(2) + "</b>")} µg/m³</span>`);
         setHTML("fs-energy-readout",   `<span class="fs__readout-row">${aSpan("A <b>" + (FA.energyKwh/1000).toFixed(0) + "</b>")} · ${bSpan("B <b>" + (FB.energyKwh/1000).toFixed(0) + "</b>")} MWh/y</span>`);
       } else {
         const isA = state.filter === "A";
         const f  = isA ? FA : FB;
         const wrap = isA ? aSpan : bSpan;
         setHTML("fs-pressure-readout", wrap(`<b>${f.pressureEnd.toFixed(0)}</b> Pa`));
-        setHTML("fs-pm-readout",       wrap(`<b>${f.pmMean.toFixed(2)}</b> µg/m³`));
+        setHTML("fs-pm-readout",       wrap(`<b>${(isA ? pmA : pmB).toFixed(2)}</b> µg/m³`));
         setHTML("fs-energy-readout",   wrap(`<b>${f.energyKwh.toLocaleString()}</b> kWh/y`));
       }
     }
@@ -1288,19 +1319,17 @@
         yLabel: "Pressure drop (Pa)",
       });
 
-      // PM2.5 chart — conventional time-series orientation:
-      // x = Time (hrs), y = PM2.5 level (μg/m³).
+      // PM2.5 chart — real measured indoor PM2.5, one operating year per
+      // filter, as a mean line + min/max band. x = Time (hrs), y = PM2.5
+      // level (μg/m³), capped at caseData.pmAxisCap (see PM_DATA above).
       const pmSets = filters.map((fKey) => ({
-        pts: pmSeries(caseData.filters[fKey], fKey === "A" ? 91 : 113),
+        buckets: (PM_DATA[state.case] || {})[fKey] || [],
         color: FILTER_COLORS[fKey],
-        width: 1.0, opacity: 0.78,
       }));
-      const pmVals = pmSets.flatMap((s) => s.pts.map((p) => p.y));
-      const pmYMax = Math.max(...pmVals) * 1.12;
-      lineChart(pm, {
+      pmBandChart(pm, {
         series: pmSets,
         xMin: 0, xMax: 8760,
-        yMin: 0, yMax: pmYMax,
+        yMin: 0, yMax: caseData.pmAxisCap,
         xTicks: 4, yTicks: 4,
         fmtX: (v) => v >= 1000 ? (v / 1000).toFixed(1) + "K" : Math.round(v),
         fmtY: (v) => v.toFixed(2),
@@ -1317,12 +1346,13 @@
     // ---------- Controls ----------
     $$('[data-fs-case]').forEach((btn) => {
       btn.addEventListener("click", () => {
+        const key = btn.dataset.fsCase;
         $$('[data-fs-case]').forEach((b) => {
-          const on = b === btn;
+          const on = b.dataset.fsCase === key;
           b.classList.toggle("is-active", on);
           b.setAttribute("aria-pressed", on ? "true" : "false");
         });
-        state.case = btn.dataset.fsCase;
+        state.case = key;
         renderCaseHeader();
         renderCostReadout();
         buildArchetype();
@@ -1330,25 +1360,55 @@
         redraw();
       });
     });
+    // Applies a new state.filter value ("A" | "B" | "compare"), syncing
+    // the top chip control and every dependent view. Shared by the top
+    // Filter/Compare chips and by the clickable Total Co-Benefits cost
+    // boxes below, so both controls stay in lockstep.
+    function applyFilter(next) {
+      state.filter = next;
+      $$('[data-fs-filter]').forEach((b) => {
+        const on = b.dataset.fsFilter === next;
+        b.classList.toggle("is-active", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+      // Update filter-membrane label
+      const label = arch.querySelector("#fs-filter-label");
+      if (label) {
+        const filters = activeFilters();
+        label.textContent = filters.length === 1
+          ? CASES[state.case].filters[filters[0]].name.toUpperCase()
+          : "FILTER";
+      }
+      renderCostReadout();
+      updateIntent();
+      redraw();
+    }
+
     $$('[data-fs-filter]').forEach((btn) => {
-      btn.addEventListener("click", () => {
-        $$('[data-fs-filter]').forEach((b) => {
-          const on = b === btn;
-          b.classList.toggle("is-active", on);
-          b.setAttribute("aria-pressed", on ? "true" : "false");
-        });
-        state.filter = btn.dataset.fsFilter;
-        // Update filter-membrane label
-        const label = arch.querySelector("#fs-filter-label");
-        if (label) {
-          const filters = activeFilters();
-          label.textContent = filters.length === 1
-            ? CASES[state.case].filters[filters[0]].name.toUpperCase()
-            : "FILTER";
+      btn.addEventListener("click", () => applyFilter(btn.dataset.fsFilter));
+    });
+
+    // Total Co-Benefits cost boxes double as A/B toggles: clicking one
+    // adds/removes that filter from the comparison (compare = both on),
+    // but at least one side must stay active.
+    $$('[data-fs-cost-filter]').forEach((box) => {
+      const key = box.dataset.fsCostFilter; // "A" | "B"
+      const otherKey = key === "A" ? "B" : "A";
+      const toggle = () => {
+        const isOn = state.filter === "compare" || state.filter === key;
+        if (isOn) {
+          if (state.filter === "compare") applyFilter(otherKey);
+          // else: this is the only active side — ignore, keep ≥1 active.
+        } else {
+          applyFilter("compare");
         }
-        renderCostReadout();
-        updateIntent();
-        redraw();
+      };
+      box.addEventListener("click", toggle);
+      box.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggle();
+        }
       });
     });
 
@@ -1460,73 +1520,16 @@
       { letter: "L", label: "Limit",            color: "#E47A6A" },
     ];
 
-    const NS_SVG = "http://www.w3.org/2000/svg";
-    const svgEl = (tag, attrs) => {
-      const el = document.createElementNS(NS_SVG, tag);
-      if (attrs) Object.entries(attrs).forEach(([k,v]) => el.setAttribute(k, v));
-      return el;
-    };
-    const clearNode = (n) => { while (n.firstChild) n.removeChild(n.firstChild); };
-
-    // ---------- Tower SVG (live: each segment is a 0-100% bar) ----------
-    // Each segment is a horizontal bar that fills left→right in
-    // proportion to the bin's percentage. Redraws on every scenario
-    // change so the tower reflects the active state.
-    function drawPpTower(bins) {
+    // ---------- Isometric tower ----------
+    function drawPpTowerIso(bins) {
       if (!ppTower) return;
-      clearNode(ppTower);
-      const W = 110, H = 320;
-      ppTower.setAttribute("viewBox", `0 0 ${W} ${H}`);
-      const xL = 16, xR = 88;
-      const skew = 9;
-      const segH = 56;
-      const startY = 14;
-      const interior = xR - xL;
-
-      PP_BINS.forEach((bin, i) => {
-        const y = startY + i * segH;
-        const pct = Math.max(0, Math.min(100, bins[i] || 0));
-        const fillW = (pct / 100) * interior;
-        const bodyY = y + skew;
-        const bodyH = segH - skew - 2;
-
-        // Dark base for the empty portion of the bar
-        ppTower.appendChild(svgEl("rect", {
-          x: xL, y: bodyY, width: interior, height: bodyH,
-          fill: "rgba(178,204,238,0.04)",
-        }));
-        // Bin-colored fill (proportional, left-anchored)
-        if (fillW > 0.5) {
-          ppTower.appendChild(svgEl("rect", {
-            x: xL, y: bodyY, width: fillW, height: bodyH,
-            fill: bin.color, opacity: 0.92,
-          }));
-        }
-        // Body outline
-        ppTower.appendChild(svgEl("rect", {
-          x: xL, y: bodyY, width: interior, height: bodyH,
-          fill: "none", stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-        // Iso roof slab
-        ppTower.appendChild(svgEl("polygon", {
-          points: `${xL},${bodyY} ${xR},${bodyY} ${xR + skew},${y} ${xL - skew},${y}`,
-          fill: "rgba(178,204,238,0.05)",
-          stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-        // Iso right side
-        ppTower.appendChild(svgEl("polygon", {
-          points: `${xR},${bodyY} ${xR + skew},${y} ${xR + skew},${y + segH - 2 - skew} ${xR},${y + segH - 2}`,
-          fill: "rgba(0,0,0,0.22)",
-          stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-      });
-      // Base platform
-      const baseY = startY + PP_BINS.length * segH;
-      ppTower.appendChild(svgEl("polygon", {
-        points: `${xL-5},${baseY+skew} ${xR+5},${baseY+skew} ${xR + skew + 5},${baseY} ${xL - skew - 5},${baseY}`,
-        fill: "rgba(178,204,238,0.05)",
-        stroke: "rgba(178,204,238,0.4)", "stroke-width": 1,
+      const data = PP_BINS.map((bin, i) => ({
+        k: bin.label,
+        letter: bin.letter,
+        color: bin.color,
+        value: Math.max(0, Math.min(100, bins[i] || 0)),
       }));
+      renderIsometricStack("#mxp-pp-tower", data);
     }
 
     // ---------- Bin rows render ----------
@@ -1604,7 +1607,7 @@
       if (!dataset) return; // safety: button should be disabled
       const s = dataset[idx] || dataset[0];
       if (ppScenarioLbl) ppScenarioLbl.textContent = formatScenarioLabel(s.l);
-      drawPpTower(s.b);
+      drawPpTowerIso(s.b);
       renderPpBins(s);
     }
 
@@ -2286,7 +2289,6 @@
     function rngS(seed) { let s = seed; return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
 
     // ---------- DOM refs ----------
-    const tower = document.getElementById("hlx-tower");
     const binsList = document.getElementById("hlx-bins");
     const cards = document.getElementById("hlx-cards");
     const stSvg = document.getElementById("hlx-st");
@@ -2294,67 +2296,6 @@
     const stTitle = document.getElementById("hlx-st-title");
     const tsTitle = document.getElementById("hlx-ts-title");
     const pills = root.querySelectorAll(".hlx__pills--param .hlx__pill");
-
-    // ---------- Tower (5 isometric stacked segments) ----------
-    // Each segment is now a 0-100% horizontal bar — the bin color fills
-    // from the left wall toward the right in proportion to the bin's
-    // current percentage. Re-renders on every parameter switch so the
-    // tower visibly responds to the active state.
-    function drawTower(bins) {
-      clear(tower);
-      const W = 120, H = 280;
-      tower.setAttribute("viewBox", `0 0 ${W} ${H}`);
-      const segH = 44;
-      const startY = 10;
-      const xLeft = 22, xRight = 90;
-      const skewY = 8;
-      const interior = xRight - xLeft;
-
-      BINS.forEach((bin, i) => {
-        const y = startY + i * segH;
-        const pct = Math.max(0, Math.min(100, bins[i] || 0));
-        const fillW = (pct / 100) * interior;
-        const bodyY = y + skewY;
-        const bodyH = segH - skewY - 2;
-
-        // Body background (dark base for the empty portion)
-        tower.appendChild(E("rect", {
-          x: xLeft, y: bodyY, width: interior, height: bodyH,
-          fill: "rgba(178,204,238,0.04)",
-        }));
-        // Bin-colored fill bar (left-anchored, proportional)
-        if (fillW > 0.5) {
-          tower.appendChild(E("rect", {
-            x: xLeft, y: bodyY, width: fillW, height: bodyH,
-            fill: bin.color, opacity: 0.92,
-          }));
-        }
-        // Body outline
-        tower.appendChild(E("rect", {
-          x: xLeft, y: bodyY, width: interior, height: bodyH,
-          fill: "none", stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-        // Iso roof slab
-        tower.appendChild(E("polygon", {
-          points: `${xLeft},${bodyY} ${xRight},${bodyY} ${xRight + skewY},${y} ${xLeft - skewY},${y}`,
-          fill: "rgba(178,204,238,0.05)",
-          stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-        // Iso right side
-        tower.appendChild(E("polygon", {
-          points: `${xRight},${bodyY} ${xRight + skewY},${y} ${xRight + skewY},${y + segH - 2 - skewY} ${xRight},${y + segH - 2}`,
-          fill: "rgba(0,0,0,0.22)",
-          stroke: "rgba(178,204,238,0.6)", "stroke-width": 1,
-        }));
-      });
-      // Base platform
-      const baseY = startY + 5 * segH;
-      tower.appendChild(E("polygon", {
-        points: `${xLeft-5},${baseY+skewY} ${xRight+5},${baseY+skewY} ${xRight + skewY + 5},${baseY} ${xLeft - skewY - 5},${baseY}`,
-        fill: "rgba(178,204,238,0.05)",
-        stroke: "rgba(178,204,238,0.4)", "stroke-width": 1,
-      }));
-    }
 
     // ---------- Bin rows ----------
     function renderBins(pcts) {
@@ -2540,11 +2481,23 @@
       });
     }
 
+    // ---------- Isometric tower ----------
+    function drawTowerIso(bins) {
+      const data = BINS.map((bin, i) => ({
+        k: bin.k,
+        letter: bin.letter,
+        color: bin.color,
+        text: bin.text,
+        value: Math.max(0, Math.min(100, bins[i] || 0)),
+      }));
+      renderIsometricStack("#hlx-tower", data);
+    }
+
     // ---------- Apply parameter ----------
     function apply(key) {
       const p = PARAMS[key];
       if (!p) return;
-      drawTower(p.bins);
+      drawTowerIso(p.bins);
       renderBins(p.bins);
       renderCards(p.card);
       stTitle.innerHTML = `H.E.A.A.L. ${p.label} &middot; SpaceTime Map`;
