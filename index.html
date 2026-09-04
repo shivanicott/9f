@@ -412,24 +412,22 @@
         <header class="mxp__chrome">
           <span class="mxp__brand">MATRIX</span>
           <span class="mxp__title-lhs">
-            <span class="mxp__title-sub">Weekend temperature setback analysis &middot; Office Tower</span>
+            <span class="mxp__title-sub">Seasonal temperature setback analysis &middot; Office Tower</span>
           </span>
           <span class="mxp__chrome-meta">
-            <span class="mxp__chrome-pill" id="mxp-chrome-pill">FRI 18:00 → MON 06:00</span>
             <span class="mxp__chrome-live"><span class="mxp__chrome-dot"></span>REFERENCE DASHBOARD · v1.2.4</span>
           </span>
         </header>
 
-        <!-- Intervention tabs: only Weekend Setback was captured in the
-             source data; the other 3 families have no measured scenario
-             payload. Per the truthfulness brief, they're rendered as
-             inert reference tokens (span + aria-disabled) rather than
+        <!-- Intervention tabs: only HVAC Temperature Offsets was captured
+             in the source data; the other 2 families have no measured
+             scenario payload. Per the truthfulness brief, they're rendered
+             as inert reference tokens (span + aria-disabled) rather than
              clickable buttons that would imply switching to a family
              we don't actually have data for. -->
-        <div class="mxp__tabs" role="group" aria-label="Intervention type (captured: Weekend Setback)">
+        <div class="mxp__tabs" role="group" aria-label="Intervention type (captured: HVAC Temperature Offsets)">
           <span class="mxp__tabs-k">INTERVENTION</span>
-          <span class="mxp__tab is-active" aria-current="true">Weekend Setback</span>
-          <span class="mxp__tab" aria-disabled="true">Evening Setback</span>
+          <span class="mxp__tab is-active" aria-current="true">HVAC Temperature Offsets</span>
           <span class="mxp__tab" aria-disabled="true">Ventilation</span>
           <span class="mxp__tab" aria-disabled="true">All Combined</span>
         </div>
@@ -437,42 +435,6 @@
           <h3 class="mxp__h3">Reduction in Annual Energy Consumption</h3>
           <p class="mxp__h3-sub">Range represents model sensitivity to baseline deadband</p>
         </div>
-
-        <div class="mxp__controls" aria-label="Setback timing (captured: Fri 18:00 → Mon 06:00)">
-          <div class="mxp__control">
-            <span class="mxp__control-k">Setback start — Friday Evening</span>
-            <!-- Setback start: only the 18:00 combination was captured;
-                 20:00 and 22:00 have no measured scenarios. Demoted to
-                 inert spans so the segmented strip remains visually
-                 faithful to the platform composition without claiming
-                 controls that don't drive state. -->
-            <div class="mxp__seg" role="group" aria-label="Setback start (captured: 18:00)">
-              <span class="mxp__seg-btn is-active" aria-current="true" data-mxp-time="18:00">18:00</span>
-              <span class="mxp__seg-btn" aria-disabled="true" data-mxp-time="20:00" title="No measured data at this start time.">20:00</span>
-              <span class="mxp__seg-btn" aria-disabled="true" data-mxp-time="22:00" title="No measured data at this start time.">22:00</span>
-            </div>
-            <span class="mxp__control-foot">Begins <em id="mxp-foot-start">Friday 18:00</em></span>
-          </div>
-          <div class="mxp__control">
-            <span class="mxp__control-k">Setback end — Monday Morning</span>
-            <div class="mxp__seg" role="group" aria-label="Setback end (captured: 06:00)">
-              <span class="mxp__seg-btn" aria-disabled="true" data-mxp-time="02:00" title="No measured data at this end time.">02:00</span>
-              <span class="mxp__seg-btn" aria-disabled="true" data-mxp-time="04:00" title="No measured data at this end time.">04:00</span>
-              <span class="mxp__seg-btn is-active" aria-current="true" data-mxp-time="06:00">06:00</span>
-            </div>
-            <span class="mxp__control-foot">Ends <em id="mxp-foot-end">Monday 06:00</em></span>
-          </div>
-          <div class="mxp__control">
-            <span class="mxp__control-k">Clock Format</span>
-            <!-- Clock format: real view-state control. Toggling 24h/12h
-                 reformats every displayed time in the section. -->
-            <div class="mxp__seg" role="group" aria-label="Clock format">
-              <button class="mxp__seg-btn is-active" type="button" data-mxp-clock="24" aria-pressed="true">24h</button>
-              <button class="mxp__seg-btn" type="button" data-mxp-clock="12" aria-pressed="false">12h</button>
-            </div>
-          </div>
-        </div>
-        <p class="mxp__caption">Captured setback window: <em>Friday 18:00 → Monday 06:00</em>. Alternate start/end times are not represented in this reference dataset.</p>
 
         <div class="mxp__body">
           <div class="mxp__matrix">
@@ -495,11 +457,11 @@
             </div>
 
             <div class="mxp__grid-wrap">
-              <div class="mxp__y-axis-lbl" id="mxp-y-axis-lbl" aria-hidden="true">SUMMER WEEKEND TEMPERATURE OFFSET (°F)</div>
+              <div class="mxp__y-axis-lbl" id="mxp-y-axis-lbl" aria-hidden="true">SUMMER TEMPERATURE OFFSET (°F)</div>
               <div class="mxp__grid" id="mxp-grid" role="grid" aria-label="Energy reduction matrix · 7×7 setback scenarios">
                 <!-- populated by app.js: 7 row-label cells + 49 data cells + 7 col-label cells -->
               </div>
-              <div class="mxp__x-axis-lbl" id="mxp-x-axis-lbl" aria-hidden="true">WINTER WEEKEND TEMPERATURE OFFSET (°F)</div>
+              <div class="mxp__x-axis-lbl" id="mxp-x-axis-lbl" aria-hidden="true">WINTER TEMPERATURE OFFSET (°F)</div>
             </div>
 
             <div class="mxp__legend">
@@ -513,17 +475,7 @@
           <aside class="mxp__panel" id="mxp-panel" aria-label="Healthy People · scenario-specific IEQ distribution">
             <header class="mxp__pp-head">
               <span class="mxp__pp-title">HEALTHY PEOPLE</span>
-              <div class="mxp__pp-occ" role="group" aria-label="Occupancy window">
-                <button class="mxp__pp-occ-l" type="button"
-                        data-mxp-occ="all"
-                        aria-pressed="false"
-                        aria-disabled="true"
-                        disabled>All Occupied Hours</button>
-                <button class="mxp__pp-occ-r is-active" type="button"
-                        data-mxp-occ="monday"
-                        aria-pressed="true">Monday</button>
-              </div>
-              <span class="mxp__pp-occ-note">Monday-slice data only</span>
+              <span class="mxp__pp-occ-note">During Operating Times</span>
               <span class="mxp__pp-scenario" id="mxp-pp-scenario">Baseline</span>
             </header>
             <div class="mxp__pp-body">
