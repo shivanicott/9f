@@ -801,10 +801,11 @@
       }
       if (opts.yLabel) {
         // Feedback 4 §3.5: y-axis title to the LEFT of the y-axis,
-        // rotated vertically. Centered on the plot area's vertical
-        // midpoint, with text rotated -90° around that point.
+        // rotated vertically. Centered on the full SVG height (not just
+        // the plot area) so a long label has headroom on both ends —
+        // the svg clips at its frame edge (.fs__chart svg overflow:hidden).
         const labelX = 12;
-        const labelY = PAD.t + ih / 2;
+        const labelY = H / 2;
         const t = el("text", {
           x: labelX, y: labelY,
           "text-anchor": "middle",
@@ -905,10 +906,12 @@
         tx.textContent = v >= 1e6 ? (v / 1e6).toFixed(1) + "M" : v >= 1e3 ? Math.round(v / 1e3) + "K" : Math.round(v).toString();
         svg.appendChild(tx);
       }
-      // y-axis label — vertical-left per Feedback 4 §3.5
+      // y-axis label — vertical-left per Feedback 4 §3.5. Centered on the
+      // full SVG height, not just the plot area, so this longer label has
+      // headroom on both ends before the svg clips it at its frame edge.
       {
         const labelX = 12;
-        const labelY = PAD.t + ih / 2;
+        const labelY = H / 2;
         const yLbl = el("text", {
           x: labelX, y: labelY,
           "text-anchor": "middle",
@@ -1301,7 +1304,7 @@
           color: FILTER_COLORS[fKey],
           dot: { x: f.dustHeld, y: f.pressureEnd },
           // Feedback 4 §3.4: complete label with units + closing parenthesis.
-          dotLabel: `(${f.dustHeld.toFixed(2)} g, ${f.pressureEnd.toFixed(2)} Pa)`,
+          dotLabel: `(${f.dustHeld.toFixed(0)} g, ${f.pressureEnd.toFixed(0)} Pa)`,
         };
       });
       const allPa = pressureSets.flatMap((s) => s.pts.map((p) => p.y)).concat([0]);
@@ -1579,57 +1582,17 @@
       ppBins.innerHTML = head + rows;
     }
 
-    // Occupancy slice state — a real panel lens, independent from the
-    // active scenario. The Healthy People panel render is now a pure
-    // function of (scenario, occupancySlice).
-    //
-    // Data inventory: all 49 source screenshots were captured with
-    // Monday selected, so the "monday" slice has real measured values
-    // for every scenario. No screenshots exist for "all" (All Occupied
-    // Hours), so that slice has no data. Per the brief's truthfulness
-    // rule we don't fabricate "all" values — instead the All Occupied
-    // Hours button is disabled in markup with an explanatory title.
-    // When real all-occupied data becomes available, drop it into
-    // SCENARIO_SLICES.all (same shape as .monday) and remove the
-    // disabled attribute. No render code changes needed.
-    const SCENARIO_SLICES = {
-      monday: SCENARIOS,
-      all: null, // not captured in source data
-    };
-    let occupancySlice = "monday";
     let currentScenarioIdx = 0;
     let currentReadoutR = 6;
     let currentReadoutC = 0;
 
     function renderPpScenario(idx) {
       currentScenarioIdx = idx;
-      const dataset = SCENARIO_SLICES[occupancySlice];
-      if (!dataset) return; // safety: button should be disabled
-      const s = dataset[idx] || dataset[0];
+      const s = SCENARIOS[idx] || SCENARIOS[0];
       if (ppScenarioLbl) ppScenarioLbl.textContent = formatScenarioLabel(s.l);
       drawPpTowerIso(s.b);
       renderPpBins(s);
     }
-
-    // Real click handler for the occupancy controls (not in wireGroup —
-    // this drives real state + a re-render of the panel, scenario stays
-    // fixed). All Occupied Hours is disabled; clicking is a no-op via
-    // the disabled attribute. Monday is permanently selected but the
-    // click handler is wired so the interaction model is consistent
-    // and so future "all" slice activation needs no additional wiring.
-    function setOccupancy(slice) {
-      if (!SCENARIO_SLICES[slice]) return; // refuse to set a sliceless lens
-      occupancySlice = slice;
-      root.querySelectorAll('[data-mxp-occ]').forEach((btn) => {
-        const on = btn.dataset.mxpOcc === slice;
-        btn.classList.toggle("is-active", on);
-        btn.setAttribute("aria-pressed", on ? "true" : "false");
-      });
-      renderPpScenario(currentScenarioIdx);
-    }
-    root.querySelectorAll('[data-mxp-occ]').forEach((btn) => {
-      btn.addEventListener("click", () => setOccupancy(btn.dataset.mxpOcc));
-    });
 
     const ROWS = 7, COLS = 7;
     // Row labels (top → bottom): +7°F .. +2°F, then 0 (BASELINE row).
@@ -1783,9 +1746,8 @@
       activate(r, c, target);
     });
 
-    // Chrome chip click wiring. Each group (intervention / setback
-    // start / setback end / clock format / °F/°C / Monday-occupancy)
-    // is a mutually-exclusive aria-pressed toggle. The matrix grid
+    // Chrome chip click wiring. Each group (intervention / °F/°C /
+    // occupancy) is a mutually-exclusive aria-pressed toggle. The matrix grid
     // itself remains the source of truth for scenario state; these
     // chips toggle visual state to feel like real controls.
     function wireGroup(selector) {
@@ -1802,30 +1764,12 @@
     }
     // Inert chrome (intervention tabs, setback start/end chips) is now
     // rendered as <span> in the HTML — no click handlers needed. The
-    // truly interactive view-state controls (clock format + unit) get
-    // real handlers below that re-render every region that displays a
-    // time or temperature.
-    //
-    // [data-mxp-occ] is deliberately NOT in wireGroup either — that's
-    // the real panel-lens control (see setOccupancy / renderPpScenario).
+    // truly interactive view-state control (unit) gets a real handler
+    // below that re-renders every region that displays a temperature.
 
-    // ---------- View state: clock format + unit ----------
-    let clockFormat = "24";  // "24" | "12"
+    // ---------- View state: unit ----------
     let unit = "F";          // "F" | "C"
 
-    // Format an HH:MM string per active clock format.
-    //   formatTime("18:00") → "18:00" (24h) or "6:00 PM" (12h)
-    //   formatTime("06:00") → "06:00" (24h) or "6:00 AM" (12h)
-    function formatTime(t24) {
-      const [hStr, m] = t24.split(":");
-      const h = parseInt(hStr, 10);
-      if (clockFormat === "12") {
-        const period = h >= 12 ? "PM" : "AM";
-        const h12 = ((h + 11) % 12) + 1;
-        return `${h12}:${m} ${period}`;
-      }
-      return t24;
-    }
     // Convert a Fahrenheit offset string ("+7°F", "−2°F", "0") to the
     // active unit's display. Offsets are 5/9 ratio.
     function formatOffset(fahrLbl) {
@@ -1853,25 +1797,13 @@
     }
 
     // Re-render every region that displays a time or temperature based
-    // on the current clockFormat + unit. Called after either toggle.
+    // on the current unit. Called after the unit toggle.
     function refreshViewLabels() {
-      // Chrome pill: "FRI HH:MM → MON HH:MM"
-      const pill = document.getElementById("mxp-chrome-pill");
-      if (pill) pill.textContent = `FRI ${formatTime("18:00")} → MON ${formatTime("06:00")}`;
-      // Foot labels
-      const footStart = document.getElementById("mxp-foot-start");
-      const footEnd = document.getElementById("mxp-foot-end");
-      if (footStart) footStart.textContent = `Friday ${formatTime("18:00")}`;
-      if (footEnd) footEnd.textContent = `Monday ${formatTime("06:00")}`;
-      // Setback chip labels (display only — chips are inert spans)
-      document.querySelectorAll("[data-mxp-time]").forEach((el) => {
-        el.textContent = formatTime(el.dataset.mxpTime);
-      });
       // Axis labels (unit only)
       const yLbl = document.getElementById("mxp-y-axis-lbl");
       const xLbl = document.getElementById("mxp-x-axis-lbl");
-      if (yLbl) yLbl.textContent = `SUMMER WEEKEND TEMPERATURE OFFSET (°${unit})`;
-      if (xLbl) xLbl.textContent = `WINTER WEEKEND TEMPERATURE OFFSET (°${unit})`;
+      if (yLbl) yLbl.textContent = `SUMMER TEMPERATURE OFFSET (°${unit})`;
+      if (xLbl) xLbl.textContent = `WINTER TEMPERATURE OFFSET (°${unit})`;
       // Matrix row / col labels — re-render based on unit
       document.querySelectorAll(".mxp__row-lbl").forEach((el, i) => {
         el.textContent = formatOffset(ROW_LBLS_F[i]);
@@ -1891,11 +1823,8 @@
       });
       // Scenario label in Healthy People panel
       if (ppScenarioLbl) {
-        const dataset = SCENARIO_SLICES[occupancySlice];
-        if (dataset) {
-          const s = dataset[currentScenarioIdx] || dataset[0];
-          ppScenarioLbl.textContent = formatScenarioLabel(s.l);
-        }
+        const s = SCENARIOS[currentScenarioIdx] || SCENARIOS[0];
+        ppScenarioLbl.textContent = formatScenarioLabel(s.l);
       }
       // Readout text
       if (readout) {
@@ -1912,18 +1841,7 @@
       }
     }
 
-    // Wire clock + unit as real view-state controls
-    document.querySelectorAll("[data-mxp-clock]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        clockFormat = btn.dataset.mxpClock;
-        document.querySelectorAll("[data-mxp-clock]").forEach((b) => {
-          const on = b === btn;
-          b.classList.toggle("is-active", on);
-          b.setAttribute("aria-pressed", on ? "true" : "false");
-        });
-        refreshViewLabels();
-      });
-    });
+    // Wire unit as a real view-state control
     document.querySelectorAll("[data-mxp-unit]").forEach((btn) => {
       btn.addEventListener("click", () => {
         unit = btn.dataset.mxpUnit;
